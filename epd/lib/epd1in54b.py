@@ -1,5 +1,6 @@
 import utime
 from machine import Pin, SPI
+from bmp import BitmapHeader, BitmapHeaderInfo
 
 # Display resolution
 EPD_WIDTH       = 200
@@ -188,6 +189,7 @@ class EPD:
         self.send_command(0x27)
         for count in range(0, 15):
             self.send_data(self.lut_red1[count])
+
 
     def get_frame_buffer(self, image):
         buf = [0xFF] * (self.width * self.height / 8)
@@ -420,5 +422,56 @@ class EPD:
                 err += x_pos * 2 + 1
             if x_pos > 0:
                 break
+
+
+    def draw_bmp(self, frame_buffer, image_path, colored):
+        try:
+            with open(image_path, 'rb') as bmp_file:
+                header = BitmapHeader(bmp_file.read(BitmapHeader.SIZE_IN_BYTES))
+                header_info = BitmapHeaderInfo(bmp_file.read(BitmapHeaderInfo.SIZE_IN_BYTES))
+                data_end = header.file_size - 2
+                width_in_bytes = int(self.width/8)
+
+                if header_info.width_in_bytes > width_in_bytes:
+                    rowBytesClipped = width_in_bytes
+                else:
+                    rowBytesClipped = header_info.width_in_bytes
+
+                for row in range(header_info.height):
+                    # seek to beginning of line
+                    bmp_file.seek(data_end - (row + 1) * header_info.line_width)
+
+                    line = bytearray(bmp_file.read(rowBytesClipped))
+                    if header_info.last_byte_padding > 0:
+                        mask = 0xFF<<header_info.last_byte_padding & 0xFF
+                        line[-1] &= mask
+
+                    # self.__draw_bmp_row(frame_buffer, row, offset, line, colored)
+                    if self.rotate is ROTATE_0:
+                        offset = row*width_in_bytes
+                        if colored:
+                            line = bytearray(map(lambda b: ~b, line))
+                        frame_buffer[offset : offset+len(line)] = line
+                    else:
+                        for byte_index in range(len(line)):
+                            byte = line[byte_index]
+                            for i in range(8):
+                                if byte & (0x80 >> i):
+                                    self.set_pixel(frame_buffer, byte_index*8 + i, row, colored)
+
+        except OSError as e:
+            print('error: {}'.format(e))
+
+    # def __draw_bmp_row(self, frame_buffer, row_index, row_offset, data, colored):
+    #     if self.rotate is ROTATE_0:
+    #         if colored:
+    #             data = bytearray(map(lambda b: ~b, data))
+    #         frame_buffer[row_offset : row_offset+len(data)] = data
+    #     else:
+    #         for byte_index in range(len(data)):
+    #             byte = data[byte_index]
+    #             for i in range(8):
+    #                 if byte & (0x80 >> i):
+    #                     self.set_pixel(frame_buffer, byte_index*8 + i, row_index, colored)
 
 ### END OF FILE ###
