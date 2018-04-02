@@ -38,6 +38,10 @@ PROGRAM_MODE                                = 0xA0
 ACTIVE_PROGRAM                              = 0xA1
 READ_OTP_DATA                               = 0xA2
 
+# Color or no color
+COLORED = 1
+UNCOLORED = 0
+
 # Display orientation
 ROTATE_0                                    = 0
 ROTATE_90                                   = 1
@@ -192,25 +196,6 @@ class EPD:
             self.send_data(self.lut_red1[count])
 
 
-    def get_frame_buffer(self, image):
-        buf = [0xFF] * (self.width * self.height / 8)
-        # Set buffer to value of Python Imaging Library image.
-        # Image must be in mode 1.
-        image_monocolor = image.convert('1')
-        imwidth, imheight = image_monocolor.size
-        if imwidth != self.width or imheight != self.height:
-            raise ValueError('Image must be same dimensions as display \
-                ({0}x{1}).' .format(self.width, self.height))
-
-        pixels = image_monocolor.load()
-        for y in range(self.height):
-            for x in range(self.width):
-                # Set the bits for the column of pixels at the current position.
-                if pixels[x, y] == 0:
-                    buf[(x + y * self.width) / 8] &= ~(0x80 >> (x % 8))
-        return buf
-
-
     def clear_frame(self, frame_buffer_black, frame_buffer_red=None):
         for i in range(int(self.width * self.height / 8)):
             frame_buffer_black[i] = 0xFF
@@ -258,6 +243,7 @@ class EPD:
         self.wait_until_idle()
         self.send_command(POWER_OFF)         #power off
 
+
     def set_rotate(self, rotate):
         if (rotate == ROTATE_0):
             self.rotate = ROTATE_0
@@ -275,6 +261,7 @@ class EPD:
             self.rotate = ROTATE_270
             self.width = EPD_HEIGHT
             self.height = EPD_WIDTH
+
 
     def set_pixel(self, frame_buffer, x, y, colored):
         if (x < 0 or x >= self.width or y < 0 or y >= self.height):
@@ -296,6 +283,7 @@ class EPD:
             y = EPD_HEIGHT - point_temp
             self.set_absolute_pixel(frame_buffer, x, y, colored)
 
+
     def set_absolute_pixel(self, frame_buffer, x, y, colored):
         # To avoid display orientation effects
         # use EPD_WIDTH instead of self.width
@@ -306,6 +294,7 @@ class EPD:
             frame_buffer[int((x + y * EPD_WIDTH) / 8)] &= ~(0x80 >> (x % 8))
         else:
             frame_buffer[int((x + y * EPD_WIDTH) / 8)] |= 0x80 >> (x % 8)
+
 
     def draw_char_at(self, frame_buffer, x, y, char, font, colored):
         char_offset = (ord(char) - ord(' ')) * font.height * (int(font.width / 8) + (1 if font.width % 8 else 0))
@@ -348,13 +337,16 @@ class EPD:
                 err += dx
                 y0 += sy
 
+
     def draw_horizontal_line(self, frame_buffer, x, y, width, colored):
         for i in range(x, x + width):
             self.set_pixel(frame_buffer, i, y, colored)
 
+
     def draw_vertical_line(self, frame_buffer, x, y, height, colored):
         for i in range(y, y + height):
             self.set_pixel(frame_buffer, x, i, colored)
+
 
     def draw_rectangle(self, frame_buffer, x0, y0, x1, y1, colored):
         min_x = x0 if x1 > x0 else x1
@@ -366,6 +358,7 @@ class EPD:
         self.draw_vertical_line(frame_buffer, min_x, min_y, max_y - min_y + 1, colored)
         self.draw_vertical_line(frame_buffer, max_x, min_y, max_y - min_y + 1, colored)
 
+
     def draw_filled_rectangle(self, frame_buffer, x0, y0, x1, y1, colored):
         min_x = x0 if x1 > x0 else x1
         max_x = x1 if x1 > x0 else x0
@@ -373,6 +366,7 @@ class EPD:
         max_y = y1 if y1 > y0 else y0
         for i in range(min_x, max_x + 1):
             self.draw_vertical_line(frame_buffer, i, min_y, max_y - min_y + 1, colored)
+
 
     def draw_circle(self, frame_buffer, x, y, radius, colored):
         # Bresenham algorithm
@@ -397,6 +391,7 @@ class EPD:
                 err += x_pos * 2 + 1
             if x_pos > 0:
                 break
+
 
     def draw_filled_circle(self, frame_buffer, x, y, radius, colored):
         # Bresenham algorithm
@@ -424,8 +419,10 @@ class EPD:
             if x_pos > 0:
                 break
 
+
     def draw_bmp(self, frame_buffer, image_path, colored):
         self.draw_bmp_at(frame_buffer, 0, 0, image_path, colored)
+
 
     def draw_bmp_at(self, frame_buffer, x, y, image_path, colored):
         if x >= self.width or y >= self.height:
@@ -454,11 +451,7 @@ class EPD:
                 heightClipped = max(0, min(self.height-y, heightClipped))
                 y_offset = max(0, -y)
 
-                if heightClipped <= 0:
-                    print("heightClipped == {}, stopping".format(heightClipped))
-                    return
-                if widthClipped <= 0:
-                    print("widthClipped == {}, stopping".format(widthClipped))
+                if heightClipped <= 0 or widthClipped <= 0:
                     return
 
                 width_in_bytes = int(self.width/8)
@@ -485,17 +478,5 @@ class EPD:
 
         except OSError as e:
             print('error: {}'.format(e))
-
-    # def __draw_bmp_row(self, frame_buffer, row_index, row_offset, data, colored):
-    #     if self.rotate is ROTATE_0:
-    #         if colored:
-    #             data = bytearray(map(lambda b: ~b, data))
-    #         frame_buffer[row_offset : row_offset+len(data)] = data
-    #     else:
-    #         for byte_index in range(len(data)):
-    #             byte = data[byte_index]
-    #             for i in range(8):
-    #                 if byte & (0x80 >> i):
-    #                     self.set_pixel(frame_buffer, byte_index*8 + i, row_index, colored)
 
 ### END OF FILE ###
