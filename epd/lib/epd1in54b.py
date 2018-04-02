@@ -2,6 +2,7 @@ import utime
 from machine import Pin, SPI
 from bmp import BitmapHeader, BitmapHeaderInfo
 
+
 # Display resolution
 EPD_WIDTH       = 200
 EPD_HEIGHT      = 200
@@ -423,21 +424,51 @@ class EPD:
             if x_pos > 0:
                 break
 
-
     def draw_bmp(self, frame_buffer, image_path, colored):
+        self.draw_bmp_at(frame_buffer, 0, 0, image_path, colored)
+
+    def draw_bmp_at(self, frame_buffer, x, y, image_path, colored):
+        if x >= self.width or y >= self.height:
+            return
+
         try:
             with open(image_path, 'rb') as bmp_file:
                 header = BitmapHeader(bmp_file.read(BitmapHeader.SIZE_IN_BYTES))
                 header_info = BitmapHeaderInfo(bmp_file.read(BitmapHeaderInfo.SIZE_IN_BYTES))
                 data_end = header.file_size - 2
-                width_in_bytes = int(self.width/8)
 
+                if header_info.width > self.width:
+                    widthClipped = self.width
+                elif x < 0:
+                    widthClipped = header_info.width + x
+                else:
+                    widthClipped = header_info.width
+
+                if header_info.height > self.height:
+                    heightClipped = self.height
+                elif y < 0:
+                    heightClipped = header_info.height + y
+                else:
+                    heightClipped = header_info.height
+
+                heightClipped = max(0, min(self.height-y, heightClipped))
+                y_offset = max(0, -y)
+
+                if heightClipped <= 0:
+                    print("heightClipped == {}, stopping".format(heightClipped))
+                    return
+                if widthClipped <= 0:
+                    print("widthClipped == {}, stopping".format(widthClipped))
+                    return
+
+                width_in_bytes = int(self.width/8)
                 if header_info.width_in_bytes > width_in_bytes:
                     rowBytesClipped = width_in_bytes
                 else:
                     rowBytesClipped = header_info.width_in_bytes
 
-                for row in range(header_info.height):
+                for row in range(y_offset, heightClipped):
+                    absolute_row = row + y
                     # seek to beginning of line
                     bmp_file.seek(data_end - (row + 1) * header_info.line_width)
 
@@ -446,18 +477,11 @@ class EPD:
                         mask = 0xFF<<header_info.last_byte_padding & 0xFF
                         line[-1] &= mask
 
-                    # self.__draw_bmp_row(frame_buffer, row, offset, line, colored)
-                    if self.rotate is ROTATE_0:
-                        offset = row*width_in_bytes
-                        if colored:
-                            line = bytearray(map(lambda b: ~b, line))
-                        frame_buffer[offset : offset+len(line)] = line
-                    else:
-                        for byte_index in range(len(line)):
-                            byte = line[byte_index]
-                            for i in range(8):
-                                if byte & (0x80 >> i):
-                                    self.set_pixel(frame_buffer, byte_index*8 + i, row, colored)
+                    for byte_index in range(len(line)):
+                        byte = line[byte_index]
+                        for i in range(8):
+                            if byte & (0x80 >> i):
+                                self.set_pixel(frame_buffer, byte_index*8 + i + x, absolute_row, colored)
 
         except OSError as e:
             print('error: {}'.format(e))
